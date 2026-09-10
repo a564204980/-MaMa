@@ -2733,8 +2733,8 @@ class Run {
         if (this.phase !== 'explore' || this.momCaught)
             return;
         this.momCaught = true;
-        this.momCaughtTimer = 5.0; // 留出 2.6 秒现场狂暴挨揍反应，0.5 秒黑幕收拢，1.9 秒纯黑剧场字幕
-        this.playerStunTimer = 5.4; // 确保全程使用眩晕素材并定身
+        this.momCaughtTimer = 1.8; // 纯黑剧场大字沉浸展示 1.8 秒后直切结算面板
+        this.playerStunTimer = 2.0; // 定身
         this.momSpankBeat = 0;
         this.caughtByFamily++;
         this.lullaby = null;
@@ -3050,12 +3050,10 @@ class Run {
             this.momCaughtTimer -= dt;
             this.playerStunTimer = Math.max(0.5, this.momCaughtTimer);
             direction = { x: 0, y: 0 };
-            // 挨揍期间节拍性顿挫打击震动（前 2.6 秒击打，momCaughtTimer > 2.4）
-            if (this.momCaughtTimer > 2.4) {
-                this.momSpankBeat = (this.momSpankBeat || 0) + dt;
-                if (this.momSpankBeat >= 0.38) {
-                    this.momSpankBeat = 0;
-                }
+            // 物理制裁期间节拍性顿挫打击震动
+            this.momSpankBeat = (this.momSpankBeat || 0) + dt;
+            if (this.momSpankBeat >= 0.36 && this.momCaughtTimer > 0.3) {
+                this.momSpankBeat = 0;
             }
             if (this.momCaughtTimer <= 0) {
                 this.momCaught = false;
@@ -3492,7 +3490,7 @@ class Run {
     }
     finish(outcome) { if (this.phase === 'result')
         return; this.outcome = outcome; this.phase = 'result'; }
-    get escaped() { return this.outcome === '心满意足地睡着了'; }
+    get escaped() { return this.outcome === '心满意足，终于甜甜地睡着了' || this.outcome === '心满意足地睡着了'; }
     get breakdown() {
         return [
             this.completed * 100 + Math.max(0, this.delivered - 1) * 25,
@@ -4506,9 +4504,14 @@ class MainGameScene extends Scene {
         else {
             this.game(ctx);
             if (this.run.phase === 'result') {
+                const bounds = this.viewportBounds;
+                // 结算期间纯黑底色铺满视口，确保无缝衔接，绝不漏出任何底层走廊或角色
+                ctx.fillStyle = '#000000';
+                ctx.fillRect(bounds.left, bounds.top, bounds.width, bounds.height);
                 const resultAlpha = Math.min(1, Math.max(0, this.resultFadeTimer));
                 ctx.save();
                 ctx.globalAlpha = resultAlpha;
+                this.buttons = [];
                 GameViews.drawResult(ctx, this.uiHelper, this.run, this.daily, {
                     onHome: () => { this.screen = 'home'; },
                     onRestart: () => this.start(this.daily)
@@ -4527,6 +4530,14 @@ class MainGameScene extends Scene {
     }
     game(ctx) {
         const r = this.run, img = globalResources.getImage('house');
+        if (r.momCaught) {
+            this.buttons = [];
+            const bounds = this.viewportBounds;
+            ctx.fillStyle = '#000000';
+            ctx.fillRect(bounds.left, bounds.top, bounds.width, bounds.height);
+            this.drawMomCaughtOverlay(ctx);
+            return;
+        }
         this.box(ctx, 0, 0, 1280, 720, '#0b1219');
         ctx.save();
         ctx.translate(this.mapX, this.mapY);
@@ -4999,36 +5010,23 @@ class MainGameScene extends Scene {
                 ctx.fillRect(viewLeft + viewWidth - ex, viewTop, ex, viewHeight);
             }
         }
-        // 被妈妈抓获时戏剧落幕特效（前 2.6 秒纯现场挨揍狂欢，0.5 秒黑幕收拢，后 1.9 秒纯黑剧场大字从容展示）
-        if (r.momCaught) {
-            const curtainStart = 2.4; // 倒数至 2.4 秒时开始收拢黑幕（前 2.6 秒为无遮挡纯现场挨揍表演）
-            const textStart = 1.9; // 倒数至 1.9 秒时黑幕已完全纯黑，专场大字登场
-            if (r.momCaughtTimer <= curtainStart) {
-                ctx.save();
-                // 黑幕淡入阶段：2.4s -> 1.9s（0.5 秒内平滑升至 1.0 纯黑）
-                const fadeProgress = Math.min(1, Math.max(0, (curtainStart - r.momCaughtTimer) / (curtainStart - textStart)));
-                ctx.fillStyle = `rgba(0, 0, 0, ${(fadeProgress * 0.98).toFixed(3)})`;
-                ctx.fillRect(viewLeft, viewTop, viewWidth, viewHeight);
-                // 专场落幕大字展示阶段：1.9s -> 0s（持续整整 1.9 秒，背景纯黑，无底层气泡重叠打架）
-                if (r.momCaughtTimer <= textStart) {
-                    const textElapsed = textStart - r.momCaughtTimer; // 0 -> 1.9 秒
-                    const enterAnim = Math.min(1, textElapsed / 0.28); // 0.28 秒弹性缩放浮现
-                    const scale = 0.92 + 0.08 * Math.sin(enterAnim * Math.PI * 0.5);
-                    const alpha = Math.min(1, textElapsed / 0.18);
-                    ctx.save();
-                    ctx.translate(640, 345);
-                    ctx.scale(scale, scale);
-                    ctx.shadowColor = '#ff3344';
-                    ctx.shadowBlur = 10;
-                    this.text(ctx, '惨遭老妈物理制裁，屁股开花……💥', 0, 0, 28, `rgba(255, 95, 95, ${alpha.toFixed(2)})`, 'center');
-                    ctx.shadowColor = '#000000';
-                    ctx.shadowBlur = 6;
-                    this.text(ctx, '——大半夜不睡觉，被老妈赏了一顿热气腾腾的竹笋炒肉😭——', 0, 42, 15, `rgba(245, 225, 190, ${(alpha * 0.9).toFixed(2)})`, 'center');
-                    ctx.restore();
-                }
-                ctx.restore();
-            }
-        }
+    }
+    drawMomCaughtOverlay(ctx) {
+        const r = this.run;
+        const elapsed = Math.max(0, 1.8 - r.momCaughtTimer); // 0 -> 1.8 秒
+        const enterAnim = Math.min(1, elapsed / 0.22); // 0.22 秒弹性缩放登场
+        const scale = 0.94 + 0.06 * Math.sin(enterAnim * Math.PI * 0.5);
+        const alpha = Math.min(1, elapsed / 0.15);
+        ctx.save();
+        ctx.translate(640, 345);
+        ctx.scale(scale, scale);
+        ctx.shadowColor = '#ff3344';
+        ctx.shadowBlur = 12;
+        this.text(ctx, '惨遭老妈物理制裁，屁股开花……💥', 0, 0, 28, `rgba(255, 95, 95, ${alpha.toFixed(2)})`, 'center');
+        ctx.shadowColor = '#000000';
+        ctx.shadowBlur = 6;
+        this.text(ctx, '——大半夜不睡觉，被老妈赏了一顿热气腾腾的竹笋炒肉😭——', 0, 42, 15, `rgba(245, 225, 190, ${(alpha * 0.9).toFixed(2)})`, 'center');
+        ctx.restore();
     }
     prop(ctx, kind, x, y, size) {
         const index = ['cake', 'tv', 'bear', 'rabbit', 'dino'].indexOf(kind), image = globalResources.getImage('wish-props');

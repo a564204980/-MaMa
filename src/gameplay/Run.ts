@@ -224,8 +224,8 @@ export class Run {
   catchPlayerByMom() {
     if (this.phase !== 'explore' || this.momCaught) return;
     this.momCaught = true;
-    this.momCaughtTimer = 5.0; // 留出 2.6 秒现场狂暴挨揍反应，0.5 秒黑幕收拢，1.9 秒纯黑剧场字幕
-    this.playerStunTimer = 5.4; // 确保全程使用眩晕素材并定身
+    this.momCaughtTimer = 1.8; // 纯黑剧场大字沉浸展示 1.8 秒后直切结算面板
+    this.playerStunTimer = 2.0; // 定身
     this.momSpankBeat = 0;
     this.caughtByFamily++;
     this.lullaby = null;
@@ -483,13 +483,11 @@ export class Run {
       this.momCaughtTimer -= dt;
       this.playerStunTimer = Math.max(0.5, this.momCaughtTimer);
       direction = { x: 0, y: 0 };
-      // 挨揍期间节拍性顿挫打击震动（前 2.6 秒击打，momCaughtTimer > 2.4）
-      if (this.momCaughtTimer > 2.4) {
-        this.momSpankBeat = (this.momSpankBeat || 0) + dt;
-        if (this.momSpankBeat >= 0.38) {
-          this.momSpankBeat = 0;
-          WechatBridge.vibrateShort('heavy');
-        }
+      // 物理制裁期间节拍性顿挫打击震动
+      this.momSpankBeat = (this.momSpankBeat || 0) + dt;
+      if (this.momSpankBeat >= 0.36 && this.momCaughtTimer > 0.3) {
+        this.momSpankBeat = 0;
+        WechatBridge.vibrateShort('heavy');
       }
       if (this.momCaughtTimer <= 0) {
         this.momCaught = false;
@@ -839,7 +837,7 @@ export class Run {
   }
 
   finish(outcome: string) { if (this.phase === 'result') return; this.outcome = outcome; this.phase = 'result'; }
-  get escaped() { return this.outcome === '心满意足地睡着了'; }
+  get escaped() { return this.outcome === '心满意足，终于甜甜地睡着了' || this.outcome === '心满意足地睡着了'; }
   get breakdown() {
     return [
       this.completed * 100 + Math.max(0,this.delivered-1)*25,

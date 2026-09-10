@@ -149,10 +149,10 @@ console.log('PASS: 20 deterministic seeds, reachable interactions with collision
   momCatchRun.update(0.1, { x: 0, y: 0 });
   assert.equal(momCatchRun.momCaught, true, '被妈妈抓到后进入 momCaught 状态');
   assert(momCatchRun.playerStunTimer > 0, '主角处于眩晕定身');
-  assert.equal(momCatchRun.phase, 'explore', '前 2 秒内仍在眩晕落幕中，尚未直接跳结算');
+  assert.equal(momCatchRun.phase, 'explore', '在纯黑大字展示期间仍在落幕阶段，尚未直接跳结算');
   
-  // 模拟经过落幕时间（5.0 秒戏剧落幕与纯黑专场字幕展示）
-  for (let t = 0; t < 55; t++) momCatchRun.update(0.1, { x: 0, y: 0 });
+  // 模拟经过落幕时间（1.8 秒纯黑专场大字展示）
+  for (let t = 0; t < 25; t++) momCatchRun.update(0.1, { x: 0, y: 0 });
   assert.equal(momCatchRun.phase, 'result', '眩晕与落幕倒计时结束后切入结算');
   assert(momCatchRun.outcome.includes('被妈妈当场抓获'), '结算文案明确为被妈妈抓住失败');
   // 7. 验证摇篮曲哄睡小游戏：失败 2 次，婴儿直接大哭惊醒
