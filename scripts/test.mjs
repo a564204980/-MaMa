@@ -187,7 +187,11 @@ console.log('PASS: 20 deterministic seeds, reachable interactions with collision
   reviveRun.revive();
   assert.equal(reviveRun.phase, 'explore', '复活后应回到 explore 游戏现场');
   assert.equal(reviveRun.cakeProgress, 0.5, '复活后心愿进度应完整保留');
-  assert.equal(reviveRun.player.x, 236, '主角应安全重置在卧室小床');
+  assert.equal(reviveRun.player.x, 335, '主角应安全重置在卧室床边合法地面');
+  assert.equal(reviveRun.player.y, 370, '主角应处于床边可行走区域');
+  const originX = reviveRun.player.x;
+  move(reviveRun.player, 10, 0, reviveRun.closed);
+  assert(reviveRun.player.x > originX, '复活后应能正常自由移动，绝不被卡在家具中');
   assert.equal(reviveRun.revivesUsed, 1, '已消耗 1 次复活');
   assert.equal(reviveRun.canRevive, false, '消耗后本局不再允许二次复活');
 

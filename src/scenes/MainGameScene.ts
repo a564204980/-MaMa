@@ -344,6 +344,7 @@ export class MainGameScene extends Scene {
             this.run.revive();
             this.screen = 'play';
             this.resultFadeTimer = 0;
+            this.clearInput();
           }
         });
         ctx.restore();

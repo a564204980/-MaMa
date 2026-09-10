@@ -876,8 +876,8 @@ export class Run {
     this.momCaught = false;
     this.momCaughtTimer = 0;
     this.playerStunTimer = 0;
-    this.player.x = 236;
-    this.player.y = 396;
+    this.player.x = 335;
+    this.player.y = 370;
     this.activity = null;
     this.sleeping = false;
     this.hidden = false;

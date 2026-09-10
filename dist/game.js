@@ -3526,8 +3526,8 @@ class Run {
         this.momCaught = false;
         this.momCaughtTimer = 0;
         this.playerStunTimer = 0;
-        this.player.x = 236;
-        this.player.y = 396;
+        this.player.x = 335;
+        this.player.y = 370;
         this.activity = null;
         this.sleeping = false;
         this.hidden = false;
@@ -4770,6 +4770,7 @@ class MainGameScene extends Scene {
                         this.run.revive();
                         this.screen = 'play';
                         this.resultFadeTimer = 0;
+                        this.clearInput();
                     }
                 });
                 ctx.restore();
