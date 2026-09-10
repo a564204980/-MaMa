@@ -151,9 +151,9 @@ console.log('PASS: 20 deterministic seeds, reachable interactions with collision
   assert(momCatchRun.playerStunTimer > 0, '主角处于眩晕定身');
   assert.equal(momCatchRun.phase, 'explore', '在纯黑大字展示期间仍在落幕阶段，尚未直接跳结算');
   
-  // 模拟经过落幕时间（1.8 秒纯黑专场大字展示）
-  for (let t = 0; t < 25; t++) momCatchRun.update(0.1, { x: 0, y: 0 });
-  assert.equal(momCatchRun.phase, 'result', '眩晕与落幕倒计时结束后切入结算');
+  // 模拟经过落幕时间（1.8 秒现场暴打 + 1.8 秒纯黑专场大字展示）
+  for (let t = 0; t < 40; t++) momCatchRun.update(0.1, { x: 0, y: 0 });
+  assert.equal(momCatchRun.phase, 'result', '现场挨揍与落幕大字倒计时结束后切入结算');
   assert(momCatchRun.outcome.includes('被妈妈当场抓获'), '结算文案明确为被妈妈抓住失败');
   // 7. 验证摇篮曲哄睡小游戏：失败 2 次，婴儿直接大哭惊醒
   const lullabyRun = new Run('lullaby-test', 1);
@@ -175,9 +175,29 @@ console.log('PASS: 20 deterministic seeds, reachable interactions with collision
   lullabyRun.interact();
   assert.equal(lullabyRun.lullaby, null, '第 2 次失误哄睡小游戏强制关闭');
   assert.equal(lullabyRun.cry, 100, '第 2 次失误婴儿哭闹值必须达到 100（大声哭）');
-  assert(lullabyRun.playerStunTimer > 0, '第 2 次失误主角应被吓呆定身');
+  // 测试每局限一次分享复活机制
+  const reviveRun = new Run('revive-test', 1);
+  reviveRun.cakeProgress = 0.5; // 完成一半蛋糕
+  assert.equal(reviveRun.canRevive, true, '初始未逃脱且未复活时，应允许分享复活');
+  reviveRun.finish('被妈妈当场抓获并教育了一顿！');
+  assert.equal(reviveRun.phase, 'result');
+  assert.equal(reviveRun.canRevive, true, '首次被抓时允许复活');
 
-  console.log('PASS: sleep mechanics, chase drain, hiding shield, toy reward, bed victory, lullaby 2-strike cry, mom AI fix.');
+  // 执行首次复活
+  reviveRun.revive();
+  assert.equal(reviveRun.phase, 'explore', '复活后应回到 explore 游戏现场');
+  assert.equal(reviveRun.cakeProgress, 0.5, '复活后心愿进度应完整保留');
+  assert.equal(reviveRun.player.x, 236, '主角应安全重置在卧室小床');
+  assert.equal(reviveRun.revivesUsed, 1, '已消耗 1 次复活');
+  assert.equal(reviveRun.canRevive, false, '消耗后本局不再允许二次复活');
+
+  // 第二次被抓
+  reviveRun.finish('第二次被妈妈抓住！');
+  assert.equal(reviveRun.canRevive, false, '第二次被抓不能再复活');
+  reviveRun.revive(); // 尝试再次复活
+  assert.equal(reviveRun.phase, 'result', '复活机会已用尽，无法再次复活');
+
+  console.log('PASS: sleep mechanics, chase drain, hiding shield, toy reward, bed victory, lullaby 2-strike cry, mom AI fix, single revive limit.');
 }
 
 // Both changed touches must be dispatched, and cancellation must release the corresponding finger.

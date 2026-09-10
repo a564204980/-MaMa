@@ -3,7 +3,7 @@ import { WechatBridge } from '../platform/WechatBridge';
 export type Phase = 'explore' | 'result';
 export type ToyKind = 'bear' | 'rabbit' | 'dino';
 export interface Spot extends Point { id: string; name: string; kind: 'toy' | 'cake' | 'tv' | 'storage' | 'bed' | 'baby' | 'hide'; toy?: ToyKind; }
-export interface Family extends Point { name: string; sleep: number; state: 'sleep' | 'alert' | 'active'; returning?: boolean; timer: number; path: Point[]; chatter?: string; chatterTimer?: number; }
+export interface Family extends Point { name: string; sleep: number; state: 'sleep' | 'alert' | 'active'; returning?: boolean; timer: number; path: Point[]; chatter?: string; chatterTimer?: number; repathTimer?: number; }
 export function seeded(seed: string): () => number {
   let n = 2166136261;
   for (const c of seed) n = Math.imul(n ^ c.charCodeAt(0), 16777619);
@@ -88,6 +88,8 @@ export class Run {
   momCaught = false; // 是否被妈妈当场抓获
   momCaughtTimer = 0; // 抓获后眩晕落幕倒计时（2秒）
   momSpankBeat = 0; // 挨揍节拍计时器
+  revivesUsed = 0; // 本局已使用分享复活次数（每局限1次）
+  get canRevive(): boolean { return this.revivesUsed === 0 && !this.escaped; }
   get completed() { return Number(this.cakeProgress >= 1) + Number(this.tvProgress >= 1) + Number(this.delivered > 0); }
   get canFinish() { return this.sleepProgress >= 80 || this.completed >= 2; }
   get moveSpeed() { return (this.carrying || this.activity === 'cake') ? 102 : 120; }
@@ -224,8 +226,8 @@ export class Run {
   catchPlayerByMom() {
     if (this.phase !== 'explore' || this.momCaught) return;
     this.momCaught = true;
-    this.momCaughtTimer = 1.8; // 纯黑剧场大字沉浸展示 1.8 秒后直切结算面板
-    this.playerStunTimer = 2.0; // 定身
+    this.momCaughtTimer = 3.6; // 前 1.8 秒现场暴打挨揍，后 1.8 秒纯黑剧场大字
+    this.playerStunTimer = 4.0; // 确保全程定身与挨揍表情
     this.momSpankBeat = 0;
     this.caughtByFamily++;
     this.lullaby = null;
@@ -624,25 +626,39 @@ export class Run {
     for (let i = 0; i < this.family.length; i++) {
       const f = this.family[i];
       if (f.state === 'sleep') {
-        if (this.cry >= 100) f.sleep = 0;
+        const babyCrying = this.cry >= 75 && this.babySleepShield <= 0;
+        if (babyCrying) {
+          // 婴儿嚎啕大哭时：穿透扣除睡意
+          // 妈妈直觉极高，每秒扣除 50 点睡意，约 1.5 秒即彻底惊醒下床
+          // 爸爸受刺耳噪音干扰，每秒扣除 22 点睡意
+          const drain = i === 1 ? dt * 50 : dt * 22;
+          f.sleep = Math.max(0, f.sleep - drain);
+        }
         // 睡意为 0 时直接下床起床，不再有坐起动作
         if (f.sleep <= 0) {
           f.sleep = 0;
           f.state = 'active'; f.returning = false; f.timer = 25;
           if (i === 1) {
             this.wakes++; this.alerts++;
-            this.say('妈妈睡意全无，直接下床了！快找地方躲藏！');
+            if (babyCrying) {
+              f.chatter = '小宝宝怎么哭了？！快去看看！💢';
+              f.chatterTimer = 3.0;
+              this.say('小宝大哭！妈妈被彻底吵醒，正破门冲来！');
+            } else {
+              this.say('妈妈睡意全无，直接下床了！快找地方躲藏！');
+            }
+            // 优先追击暴露的主角；若主角已躲藏且婴儿哭闹，则直奔婴儿床查看
+            const target = (!this.sleeping && !this.hidden) ? this.player : (babyCrying ? { x: 280, y: 595 } : { x: 325, y: 355 });
+            f.path = route(f, target); 
+            f.repathTimer = 0.35;
           } else {
             this.say('爸爸被吵醒了，直接下床了！');
-          }
-          if (i === 0) {
             const r = Math.random();
             const dest = r < 0.4 ? {x: 1050, y: 155} : (r < 0.8 ? {x: 820, y: 680} : {x: 800, y: 300});
             f.path = route(f, dest); 
-          } else {
-            f.path = route(f, this.sleeping ? { x: 325, y: 355 } : this.player); 
           }
-        } else {
+        } else if (!babyCrying) {
+          // 仅在婴儿未哭闹时自然恢复睡意
           f.sleep = Math.min(100, f.sleep + dt * .35);
         }
       } else if (f.state === 'alert') {
@@ -655,7 +671,9 @@ export class Run {
             const dest = r < 0.4 ? {x: 1050, y: 155} : (r < 0.8 ? {x: 820, y: 680} : {x: 800, y: 300});
             f.path = route(f, dest); 
           } else {
-            f.path = route(f, this.sleeping ? { x: 325, y: 355 } : this.player); 
+            const target = (!this.sleeping && !this.hidden) ? this.player : { x: 325, y: 355 };
+            f.path = route(f, target); 
+            f.repathTimer = 0.35;
           }
         }
       } else {
@@ -666,7 +684,21 @@ export class Run {
         }
         const momRush = isMom && (this.cry >= 75 && this.babySleepShield <= 0);
         const speed = momRush ? 145 : 82;
-        f.timer -= dt; this.follow(f, f.path, dt * speed, true);
+        f.timer -= dt;
+
+        // 妈妈高敏捷动态追击（Dynamic Repathing）：永远扑向主角最新方位，绝不跑向过时旧点
+        if (isMom && !f.returning && !this.sleeping && !this.hidden) {
+          f.repathTimer = (f.repathTimer || 0) - dt;
+          const currentEnd = f.path.length > 0 ? f.path[f.path.length - 1] : null;
+          const targetDist = currentEnd ? distance(currentEnd, this.player) : 999;
+          // 只要玩家跑离旧终点超过 45px，或 0.35 秒周期到期，立刻动态重构路径紧咬玩家最新坐标
+          if (targetDist > 45 || f.repathTimer <= 0) {
+            f.repathTimer = 0.35;
+            f.path = route(f, this.player);
+          }
+        }
+
+        this.follow(f, f.path, dt * speed, true);
         if (momRush && !f.returning && f.path.length === 0) {
           f.path = route(f, this.player);
         }
@@ -837,6 +869,30 @@ export class Run {
   }
 
   finish(outcome: string) { if (this.phase === 'result') return; this.outcome = outcome; this.phase = 'result'; }
+  revive() {
+    if (this.revivesUsed > 0) return;
+    this.revivesUsed++;
+    this.phase = 'explore';
+    this.momCaught = false;
+    this.momCaughtTimer = 0;
+    this.playerStunTimer = 0;
+    this.player.x = 236;
+    this.player.y = 396;
+    this.activity = null;
+    this.sleeping = false;
+    this.hidden = false;
+    this.family.forEach(f => {
+      f.state = 'sleep';
+      f.sleep = 100;
+      f.path = [];
+      f.returning = false;
+      f.repathTimer = 0;
+    });
+    this.cry = 0;
+    this.babySleepShield = 2.5;
+    this.message = '嘘……满血复活！继续行动！';
+    this.messageTime = 4;
+  }
   get escaped() { return this.outcome === '心满意足，终于甜甜地睡着了' || this.outcome === '心满意足地睡着了'; }
   get breakdown() {
     return [

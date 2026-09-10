@@ -1,3 +1,4 @@
+import { drawRoundRect, drawCrescentMoon } from '../utils/draw';
 import { Run } from '../gameplay/Run';
 import { StorageManager } from '../core/StorageManager';
 import { WechatBridge } from '../platform/WechatBridge';
@@ -27,6 +28,7 @@ export interface SettingsData {
 }
 
 export interface UIHelper {
+  registerButton?: (b: Button) => void;
   text: (ctx: CanvasRenderingContext2D, text: string, x: number, y: number, size?: number, color?: string, align?: CanvasTextAlign) => void;
   box: (ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, color: string, stroke?: string) => void;
   button: (ctx: CanvasRenderingContext2D, b: Button) => void;
@@ -186,43 +188,234 @@ export class GameViews {
     actions: {
       onHome: () => void;
       onRestart: () => void;
+      onRevive?: () => void;
     }
   ): void {
-    ui.panel(
-      ctx,
-      run.escaped ? '心满意足，晚安。' : (run.outcome.includes('妈妈') || run.outcome.includes('竹笋炒肉') ? '惨遭老妈物理制裁！😭' : '今晚先到这里。'),
-      `${run.outcome}  ·  ${Math.floor(run.elapsed)} 秒  ·  ${daily ? '每日同种子' : `第 ${run.night} 夜`}`
-    );
-    ui.text(ctx, `${run.score}`, 330, 300, 76, '#cfbb91');
-    const grade = run.score >= 900 ? 'S' : run.score >= 750 ? 'A' : run.score >= 600 ? 'B' : run.score >= 400 ? 'C' : 'D';
-    ui.text(ctx, `${grade}  /  1000`, 350, 363, 20, '#899f9f');
-    const labels = ['小心愿与玩具', '躲过妈妈', '噪声控制', '时间效率', '安睡结果'];
-    run.breakdown.forEach((v, i) => {
-      ui.text(ctx, labels[i], 580, 240 + i * 37, 16, '#9daba6');
-      ui.text(ctx, String(v), 950, 240 + i * 37, 19, '#ded5be', 'right');
-    });
-    ui.wrap(
-      ctx,
-      `完成 ${run.completed}/3 个小心愿，收好 ${run.delivered} 个玩具，被发现 ${run.caughtByFamily} 次。${run.escaped && run.night < 4 ? '下一夜已解锁。' : '进度中断不丢，危险时先躲好。'}`,
-      290,
-      480,
-      39,
-      15
-    );
-    ui.button(ctx, { x: 290, y: 554, w: 180, h: 45, label: '回到标题', action: actions.onHome });
-    ui.button(ctx, {
-      x: 505,
-      y: 554,
-      w: 200,
-      h: 45,
-      label: '分享这一夜',
-      action: () =>
-        WechatBridge.shareAppMessage(
-          `疯狂妈妈MaMa：偷偷完成 ${run.completed} 个小心愿，得到 ${run.score} 分！`,
-          undefined,
-          `seed=${encodeURIComponent(run.seed)}`
-        )
-    });
-    ui.button(ctx, { x: 800, y: 554, w: 185, h: 45, label: '再来一夜 →', primary: true, action: actions.onRestart });
+        const win = run.escaped;
+        const text = (value: string, x: number, y: number, size = 18, color = '#e9dfca', align: CanvasTextAlign = 'left') => ui.text(ctx, value, x, y, size, color, align);
+
+        ctx.save();
+        // 居中等比缩小至 0.88，使四周留白更加从容自然
+        const scale = 0.88;
+        ctx.translate(640, 360);
+        ctx.scale(scale, scale);
+        ctx.translate(-640, -360);
+
+        // 居中悬浮卡片 (95, 40, 1090, 640) - 高级暮夜幻紫渐变
+        const cardX = 95, cardY = 40, cardW = 1090, cardH = 640, cardR = 28;
+        const night = ctx.createLinearGradient(cardX, cardY, cardX + cardW, cardY + cardH);
+        night.addColorStop(0, '#312046');
+        night.addColorStop(0.48, '#201532');
+        night.addColorStop(1, '#130c1f');
+
+        drawRoundRect(ctx, cardX, cardY, cardW, cardH, cardR);
+        ctx.fillStyle = night;
+        ctx.fill();
+        ctx.strokeStyle = 'rgba(245, 217, 158, 0.42)';
+        ctx.lineWidth = 2;
+        ctx.stroke();
+
+        ctx.save();
+        drawRoundRect(ctx, cardX, cardY, cardW, cardH, cardR);
+        ctx.clip();
+        const halo = ctx.createRadialGradient(357, 357, 20, 357, 357, 320);
+        halo.addColorStop(0, 'rgba(228, 198, 142, .24)');
+        halo.addColorStop(1, 'rgba(228, 198, 142, 0)');
+        ctx.fillStyle = halo;
+        ctx.fillRect(cardX, cardY, 635, cardH);
+
+        drawCrescentMoon(ctx, 191, 136, 38, '#dccaa5', false, false);
+        for (const [x, y, r] of [[486, 127, 3], [530, 231, 2], [171, 292, 2], [469, 546, 3], [263, 191, 2]]) {
+          ctx.beginPath();
+          ctx.arc(x, y, r, 0, Math.PI * 2);
+          ctx.fillStyle = '#ac9a76';
+          ctx.fill();
+        }
+        ctx.restore();
+        const girl = globalResources.getImage(win ? 'girl-front' : 'girl-stun-front') || globalResources.getImage('girl-front');
+        if (girl) ctx.drawImage(girl, 105, 141, 510, 510);
+        text(win ? '把快乐带进梦里。' : '嘘……下次小声一点。', 357, 610, 23, '#c5b89f', 'center');
+        text((daily ? '每日同种子' : '第 ' + run.night + ' 夜') + '  /  夜间战绩', 650, 115, 18, '#a4b0bb');
+        text(win ? '今晚，偷偷赢了。' : run.outcome.includes('天快亮') ? '天亮了，还没玩够。' : '糟糕，被发现了！', 646, 183, 43, '#f5dfb9');
+        text(win ? '小心愿完成，安心睡个好觉。' : '没关系，下一夜再偷偷来。', 650, 219, 19, '#a5b0bb');
+        text(String(run.score), 643, 320, 88, '#ffe0a1');
+        const grade = run.score >= 900 ? 'S' : run.score >= 750 ? 'A' : run.score >= 600 ? 'B' : run.score >= 400 ? 'C' : 'D';
+        text('分', 826, 316, 21, '#c2ad86'); text(grade + ' 级', 1030, 292, 35, '#bda77e');
+        text('完成 ' + run.completed + ' / 3 个小心愿', 650, 365, 20, '#d4c5ac');
+        const props = globalResources.getImage('wish-props');
+        const wishes = [{ label: '偷吃蛋糕', value: run.cakeProgress, icon: 0 }, { label: '偷看电视', value: run.tvProgress, icon: 1 }, { label: '抱玩具回房', value: run.delivered > 0 ? 1 : 0, icon: 2 }];
+        wishes.forEach((wish, i) => {
+          const x = 699 + i * 166, done = wish.value >= 1;
+          if (props) ctx.drawImage(props, wish.icon * 96, 0, 96, 96, x - 36, 384, 72, 72);
+          text(wish.label, x, 483, 18, '#e4ddd0', 'center');
+          text(done ? '已完成' : wish.value > 0 ? Math.round(wish.value * 100) + '%' : '未完成', x, 507, 15, done ? '#b9d4a7' : '#8493a3', 'center');
+        });
+        const seconds = Math.floor(run.elapsed), time = String(Math.floor(seconds / 60)).padStart(2, '0') + ':' + String(seconds % 60).padStart(2, '0');
+        text('用时 ' + time + '   ·   被发现 ' + run.caughtByFamily + ' 次', 650, 548, 17, '#9ba8b6');
+        const button = (b: Button, style: 'gold' | 'green' | 'link' = 'link') => {
+          const sx = 640 + (b.x - 640) * scale;
+          const sy = 360 + (b.y - 360) * scale;
+          const sw = b.w * scale;
+          const sh = b.h * scale;
+          if (ui.registerButton) ui.registerButton({ ...b, x: sx, y: sy, w: sw, h: sh }); else ui.button(ctx, b);
+
+          if (style === 'gold' || style === 'green') {
+            const fill = ctx.createLinearGradient(0, b.y, 0, b.y + b.h);
+            if (style === 'gold') {
+              fill.addColorStop(0, '#fae3ad');
+              fill.addColorStop(1, '#d4a858');
+            } else {
+              fill.addColorStop(0, '#10c469');
+              fill.addColorStop(1, '#079d4f');
+            }
+            drawRoundRect(ctx, b.x, b.y, b.w, b.h, 20);
+            ctx.fillStyle = fill;
+            ctx.fill();
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.45)';
+            ctx.lineWidth = 1.5;
+            ctx.stroke();
+
+            ctx.save();
+            const fontSize = b.label.length >= 7 ? 20 : 22;
+            ctx.font = `bold ${fontSize}px "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif`;
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillStyle = style === 'gold' ? '#362410' : '#ffffff';
+            ctx.fillText(b.label, b.x + b.w / 2, b.y + b.h / 2);
+            ctx.restore();
+          } else {
+            ctx.save();
+            ctx.font = '500 18px "PingFang SC", "Microsoft YaHei", sans-serif';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillStyle = '#cfc0e8';
+            ctx.fillText(b.label, b.x + b.w / 2, b.y + b.h / 2);
+            ctx.restore();
+          }
+        };
+
+        const canRevive = run.canRevive;
+        const shareLabel = canRevive
+          ? '分享复活本局+1'
+          : (win ? '🌟 炫耀战绩' : '🌟 分享给好友');
+
+        const onShare = () => {
+          const title = canRevive
+            ? '我在《疯狂妈妈MaMa》被发现了！快帮我复活，就差一点点了！'
+            : (win
+                ? '《疯狂妈妈MaMa》通关获得 ' + run.score + ' 分！你能撑过今夜吗？'
+                : '我在《疯狂妈妈MaMa》拿到了 ' + run.score + ' 分，快来挑战！');
+          const shareImg = GameViews.generateShareCard(run);
+          WechatBridge.shareAppMessage(title, shareImg, 'seed=' + encodeURIComponent(run.seed));
+          if (canRevive && actions.onRevive) {
+            actions.onRevive();
+          }
+        };
+
+        button({ x: 650, y: 574, w: 214, h: 66, label: shareLabel, action: onShare }, 'green');
+        button({ x: 878, y: 574, w: 214, h: 66, label: '再来一夜  →', action: actions.onRestart }, 'gold');
+        button({ x: 284, y: 624, w: 146, h: 42, label: '返回首页', action: actions.onHome }, 'link');
+        ctx.restore();
+    }
+
+  /**
+   * 动态生成 5:4 黄金比例专属战绩分享卡片，彻底根除横屏默认截屏导致的左侧大黑边与右侧截断
+   */
+  static generateShareCard(run: Run): string | undefined {
+    if (typeof wx === 'undefined' || !(wx as any).createCanvas) return undefined;
+    try {
+      const canvas: any = (wx as any).createCanvas();
+      canvas.width = 500;
+      canvas.height = 400;
+      const ctx = canvas.getContext('2d') as CanvasRenderingContext2D;
+      if (!ctx) return undefined;
+
+      // 1. 暮夜幻紫渐变背景
+      const g = ctx.createLinearGradient(0, 0, 500, 400);
+      g.addColorStop(0, '#312046');
+      g.addColorStop(0.5, '#201532');
+      g.addColorStop(1, '#130c1f');
+      ctx.fillStyle = g;
+      ctx.fillRect(0, 0, 500, 400);
+
+      // 2. 月亮与星辰
+      drawCrescentMoon(ctx, 52, 48, 22, '#dccaa5', false, false);
+      for (const [x, y, r] of [[150, 36, 2], [300, 28, 2], [440, 45, 2], [410, 160, 2]]) {
+        ctx.beginPath();
+        ctx.arc(x, y, r, 0, Math.PI * 2);
+        ctx.fillStyle = '#ac9a76';
+        ctx.fill();
+      }
+
+      // 3. 小女孩立绘（眩晕挨揍或通关甜睡）
+      const win = run.escaped;
+      const girl = globalResources.getImage(win ? 'girl-front' : 'girl-stun-front') || globalResources.getImage('girl-front');
+      if (girl) {
+        ctx.drawImage(girl, 15, 68, 215, 215);
+      }
+
+      // 4. 战绩大字与排版
+      ctx.fillStyle = '#f5dfb9';
+      ctx.font = 'bold 22px "PingFang SC", "Microsoft YaHei", sans-serif';
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'middle';
+      ctx.fillText('疯狂妈妈MaMa', 236, 78);
+
+      ctx.fillStyle = win ? '#fae3ad' : '#ff9999';
+      ctx.font = 'bold 18px "PingFang SC", "Microsoft YaHei", sans-serif';
+      ctx.fillText(win ? '今晚偷偷赢了！' : '糟糕，被发现了！', 236, 115);
+
+      ctx.fillStyle = '#ffe0a1';
+      ctx.font = 'bold 52px "PingFang SC", "Microsoft YaHei", sans-serif';
+      ctx.fillText(String(run.score), 236, 175);
+      const scoreW = ctx.measureText(String(run.score)).width;
+      ctx.fillStyle = '#c2ad86';
+      ctx.font = 'bold 18px "PingFang SC", "Microsoft YaHei", sans-serif';
+      ctx.fillText('分', 236 + scoreW + 8, 185);
+      const grade = run.score >= 900 ? 'S' : run.score >= 750 ? 'A' : run.score >= 600 ? 'B' : run.score >= 400 ? 'C' : 'D';
+      ctx.fillStyle = '#bda77e';
+      ctx.font = 'bold 26px "PingFang SC", "Microsoft YaHei", sans-serif';
+      ctx.fillText(grade + ' 级', 415, 175);
+
+      ctx.fillStyle = '#d4c5ac';
+      ctx.font = '16px "PingFang SC", "Microsoft YaHei", sans-serif';
+      ctx.fillText('完成 ' + run.completed + ' / 3 个小心愿', 236, 230);
+      const seconds = Math.floor(run.elapsed);
+      const time = String(Math.floor(seconds / 60)).padStart(2, '0') + ':' + String(seconds % 60).padStart(2, '0');
+      ctx.fillStyle = '#9ba8b6';
+      ctx.font = '14px "PingFang SC", "Microsoft YaHei", sans-serif';
+      ctx.fillText('用时 ' + time, 236, 260);
+
+      // 5. 底部高光横幅条
+      const bar = ctx.createLinearGradient(0, 310, 500, 310);
+      bar.addColorStop(0, '#10c469');
+      bar.addColorStop(1, '#079d4f');
+      drawRoundRect(ctx, 25, 310, 450, 56, 16);
+      ctx.fillStyle = bar;
+      ctx.fill();
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.45)';
+      ctx.lineWidth = 1.5;
+      ctx.stroke();
+
+      const barText = run.canRevive
+        ? '📣 快帮我复活本局+1，一起通关！'
+        : (win ? '🌟 我已通关，你能打破纪录吗？' : '📣 疯狂妈妈太难了，快来挑战！');
+      ctx.fillStyle = '#ffffff';
+      ctx.font = 'bold 20px "PingFang SC", "Microsoft YaHei", sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText(barText, 250, 338);
+
+      if (canvas.toTempFilePathSync) {
+        return canvas.toTempFilePathSync({
+          destWidth: 500,
+          destHeight: 400,
+          fileType: 'jpg',
+          quality: 0.9
+        });
+      }
+    } catch (e) {
+      console.error('generateShareCard error:', e);
+    }
+    return undefined;
   }
 }

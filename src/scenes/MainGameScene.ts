@@ -271,6 +271,7 @@ export class MainGameScene extends Scene {
   }
   private get uiHelper(): UIHelper {
     return {
+      registerButton: (b: Button) => { this.buttons.push(b); },
       text: this.text.bind(this),
       box: this.box.bind(this),
       button: this.button.bind(this),
@@ -327,7 +328,7 @@ export class MainGameScene extends Scene {
       this.game(ctx);
       if (this.run.phase === 'result') {
         const bounds = this.viewportBounds;
-        // 结算期间纯黑底色铺满视口，确保无缝衔接，绝不漏出任何底层走廊或角色
+        // 结算期间全黑遮罩，彻底遮蔽底层画面
         ctx.fillStyle = '#000000';
         ctx.fillRect(bounds.left, bounds.top, bounds.width, bounds.height);
 
@@ -335,9 +336,15 @@ export class MainGameScene extends Scene {
         ctx.save();
         ctx.globalAlpha = resultAlpha;
         this.buttons = [];
+        this.buttons = [];
         GameViews.drawResult(ctx, this.uiHelper, this.run, this.daily, {
           onHome: () => { this.screen = 'home'; },
-          onRestart: () => this.start(this.daily)
+          onRestart: () => this.start(this.daily),
+          onRevive: () => {
+            this.run.revive();
+            this.screen = 'play';
+            this.resultFadeTimer = 0;
+          }
         });
         ctx.restore();
       }
@@ -350,7 +357,7 @@ export class MainGameScene extends Scene {
   }
   private game(ctx: CanvasRenderingContext2D) {
     const r = this.run, img = globalResources.getImage('house');
-    if (r.momCaught) {
+    if (r.momCaught && r.momCaughtTimer <= 1.8 && r.phase !== 'result') {
       this.buttons = [];
       const bounds = this.viewportBounds;
       ctx.fillStyle = '#000000';
@@ -654,7 +661,7 @@ export class MainGameScene extends Scene {
     const meters = [...r.family.map(f => ({ name: f.name, value: f.sleep, sub: f.state === 'sleep' ? (f.sleep < 30 ? '快醒了' : f.sleep < 70 ? '浅睡' : '沉睡') : f.state === 'alert' ? '惊动！' : '走动中' })), { name: '婴儿', value: r.babySleepShield > 0 ? 100 : 100 - r.cry, sub: r.babySleepShield > 0 ? `安睡 ${Math.ceil(r.babySleepShield)}s` : (r.cry > 75 ? '哭闹！' : r.cry > 40 ? '躁动' : '安静') }, { name: '你的睡意', value: r.sleepProgress, sub: `${Math.floor(r.sleepProgress)}%` }];
     meters.forEach((m, i) => { const x = 280 + i * 180; this.text(ctx, m.name, x, 36, 16, '#c4b5a3'); this.text(ctx, m.sub, x + 135, 36, 13, i === 3 ? '#c44343' : '#918274', 'right'); this.box(ctx, x, 56, 135, 3, '#1a1010'); this.box(ctx, x, 56, Math.max(1, m.value * 1.35), 3, i === 3 ? '#8b1e1e' : '#736555'); });
     this.text(ctx, `机会 ${Math.max(0, 3 - r.caughtByFamily)}`, 1080, 48, 17, '#ba8d84', 'right');
-    if (r.phase === 'explore') this.button(ctx, { x: 1115, y: 28, w: 90, h: 42, label: '暂停', action: () => { this.back = 'play'; this.screen = 'settings'; this.clearInput(); } });
+    if (r.phase === 'explore' && !r.momCaught) this.button(ctx, { x: 1115, y: 28, w: 90, h: 42, label: '暂停', action: () => { this.back = 'play'; this.screen = 'settings'; this.clearInput(); } });
     // 🚨 婴儿大哭 & 妈妈破门冲锋危机提示（纯净通透悬浮，彻底移除突兀生硬的红色背景框）
     if (r.cry >= 75 && r.babySleepShield <= 0 && r.phase === 'explore') {
       const bannerPulse = 0.85 + 0.15 * Math.sin(this.clock * 8);
@@ -676,66 +683,68 @@ export class MainGameScene extends Scene {
     }
     this.text(ctx, status, 640, 680, 15, isDraining ? '#ff7373' : '#c7d3c0', 'center');
     
-    // 虚拟摇杆
-    const restingX = 139, restingY = 550, origin = this.joystick ? this.joystick.origin : { x: restingX, y: restingY };
-    ctx.strokeStyle = '#68858d'; ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(origin.x, origin.y, 65, 0, Math.PI * 2); ctx.stroke();
-    const joy = this.joystick; const delta = joy ? { x: joy.current.x - joy.origin.x, y: joy.current.y - joy.origin.y } : { x: 0, y: 0 }; const len = Math.max(1, Math.hypot(delta.x, delta.y) / 55);
-    ctx.fillStyle = '#91aab0'; ctx.beginPath(); ctx.arc(origin.x + delta.x / len, origin.y + delta.y / len, 43, 0, Math.PI * 2); ctx.fill();
-    
-    // 圆形交互按钮
-    const btnCx = 1141, btnCy = 550, btnR = 80;
-    const label = r.interactionLabel;
-    const hasInteraction = label.length > 0;
-    this.buttons.push({ 
-      x: btnCx - btnR, 
-      y: btnCy - btnR, 
-      w: btnR * 2, 
-      h: btnR * 2, 
-      label, 
-      primary: hasInteraction, 
-      action: () => {
-        if (this.lullabyBtnProgress > 0.25) {
-          this.tapBtnAnim = 1.0;
+    // 虚拟摇杆与操作按钮（被抓现场演出期间彻底隐藏，保持电影级纯净挨揍画面）
+    if (!r.momCaught) {
+      const restingX = 139, restingY = 550, origin = this.joystick ? this.joystick.origin : { x: restingX, y: restingY };
+      ctx.strokeStyle = '#68858d'; ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(origin.x, origin.y, 65, 0, Math.PI * 2); ctx.stroke();
+      const joy = this.joystick; const delta = joy ? { x: joy.current.x - joy.origin.x, y: joy.current.y - joy.origin.y } : { x: 0, y: 0 }; const len = Math.max(1, Math.hypot(delta.x, delta.y) / 55);
+      ctx.fillStyle = '#91aab0'; ctx.beginPath(); ctx.arc(origin.x + delta.x / len, origin.y + delta.y / len, 43, 0, Math.PI * 2); ctx.fill();
+      
+      // 圆形交互按钮
+      const btnCx = 1141, btnCy = 550, btnR = 80;
+      const label = r.interactionLabel;
+      const hasInteraction = label.length > 0;
+      this.buttons.push({ 
+        x: btnCx - btnR, 
+        y: btnCy - btnR, 
+        w: btnR * 2, 
+        h: btnR * 2, 
+        label, 
+        primary: hasInteraction, 
+        action: () => {
+          if (this.lullabyBtnProgress > 0.25) {
+            this.tapBtnAnim = 1.0;
+          }
+          r.interact();
+        } 
+      });
+      
+      // 底部提示文字
+      this.text(ctx, 'WASD / 方向键 · Shift 慢走', restingX, 700, 11, '#72878b', 'center');
+
+      // 普通交互/待机形态按钮（随 lullabyBtnProgress 平滑淡出）
+      if (this.lullabyBtnProgress < 0.999) {
+        ctx.save();
+        if (this.lullabyBtnProgress > 0.001) {
+          ctx.globalAlpha = 1 - this.lullabyBtnProgress;
         }
-        r.interact();
-      } 
-    });
-    
-    // 底部提示文字
-    this.text(ctx, 'WASD / 方向键 · Shift 慢走', restingX, 700, 11, '#72878b', 'center');
+        if (hasInteraction) {
+          const pulse = 0.85 + 0.15 * Math.sin(this.clock * 3.5);
+          const glowR = btnR * 1.4 * pulse;
+          const glow2 = ctx.createRadialGradient(btnCx, btnCy, btnR * 0.6, btnCx, btnCy, glowR);
+          glow2.addColorStop(0, 'rgba(140,20,20,0.28)');
+          glow2.addColorStop(1, 'rgba(140,20,20,0)');
+          ctx.fillStyle = glow2; ctx.beginPath(); ctx.arc(btnCx, btnCy, glowR, 0, Math.PI * 2); ctx.fill();
+          ctx.fillStyle = 'rgba(30,8,8,0.88)'; ctx.beginPath(); ctx.arc(btnCx, btnCy, btnR, 0, Math.PI * 2); ctx.fill();
+          ctx.strokeStyle = '#a83232'; ctx.lineWidth = 2.5; ctx.beginPath(); ctx.arc(btnCx, btnCy, btnR, 0, Math.PI * 2); ctx.stroke();
+          const lines = label.split('/').map((s: string) => s.trim());
+          if (lines.length > 1) { this.text(ctx, lines[0], btnCx, btnCy - 11, 17, '#e8d4b3', 'center'); this.text(ctx, lines[1], btnCx, btnCy + 13, 14, '#a38a7a', 'center'); }
+          else this.text(ctx, label, btnCx, btnCy, 17, '#e8d4b3', 'center');
+        } else {
+          ctx.fillStyle = 'rgba(20,24,28,0.35)'; ctx.beginPath(); ctx.arc(btnCx, btnCy, btnR, 0, Math.PI * 2); ctx.fill();
+          ctx.strokeStyle = '#323c42'; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.arc(btnCx, btnCy, btnR, 0, Math.PI * 2); ctx.stroke();
+        }
+        ctx.restore();
+      }
 
-    // 普通交互/待机形态按钮（随 lullabyBtnProgress 平滑淡出）
-    if (this.lullabyBtnProgress < 0.999) {
-      ctx.save();
+      // 专属轻拍哄睡金色手势按钮（图 1 风格：跟随光点点击 + 食指放射线 + 弹性弹开过渡）
       if (this.lullabyBtnProgress > 0.001) {
-        ctx.globalAlpha = 1 - this.lullabyBtnProgress;
+        this.drawLullabyActionButton(ctx, btnCx, btnCy, btnR, this.lullabyBtnProgress, this.clock, this.tapBtnAnim);
       }
-      if (hasInteraction) {
-        const pulse = 0.85 + 0.15 * Math.sin(this.clock * 3.5);
-        const glowR = btnR * 1.4 * pulse;
-        const glow2 = ctx.createRadialGradient(btnCx, btnCy, btnR * 0.6, btnCx, btnCy, glowR);
-        glow2.addColorStop(0, 'rgba(140,20,20,0.28)');
-        glow2.addColorStop(1, 'rgba(140,20,20,0)');
-        ctx.fillStyle = glow2; ctx.beginPath(); ctx.arc(btnCx, btnCy, glowR, 0, Math.PI * 2); ctx.fill();
-        ctx.fillStyle = 'rgba(30,8,8,0.88)'; ctx.beginPath(); ctx.arc(btnCx, btnCy, btnR, 0, Math.PI * 2); ctx.fill();
-        ctx.strokeStyle = '#a83232'; ctx.lineWidth = 2.5; ctx.beginPath(); ctx.arc(btnCx, btnCy, btnR, 0, Math.PI * 2); ctx.stroke();
-        const lines = label.split('/').map((s: string) => s.trim());
-        if (lines.length > 1) { this.text(ctx, lines[0], btnCx, btnCy - 11, 17, '#e8d4b3', 'center'); this.text(ctx, lines[1], btnCx, btnCy + 13, 14, '#a38a7a', 'center'); }
-        else this.text(ctx, label, btnCx, btnCy, 17, '#e8d4b3', 'center');
-      } else {
-        ctx.fillStyle = 'rgba(20,24,28,0.35)'; ctx.beginPath(); ctx.arc(btnCx, btnCy, btnR, 0, Math.PI * 2); ctx.fill();
-        ctx.strokeStyle = '#323c42'; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.arc(btnCx, btnCy, btnR, 0, Math.PI * 2); ctx.stroke();
-      }
-      ctx.restore();
-    }
 
-    // 专属轻拍哄睡金色手势按钮（图 1 风格：跟随光点点击 + 食指放射线 + 弹性弹开过渡）
-    if (this.lullabyBtnProgress > 0.001) {
-      this.drawLullabyActionButton(ctx, btnCx, btnCy, btnR, this.lullabyBtnProgress, this.clock, this.tapBtnAnim);
+      // 绘制哄睡小游戏 UI
+      this.lullabyOverlay.draw(ctx, r.lullaby, this.clock, this.text.bind(this));
     }
-
-    // 绘制哄睡小游戏 UI
-    this.lullabyOverlay.draw(ctx, r.lullaby, this.clock, this.text.bind(this));
     // Red heartbeat vignette drawn last — on top of all HUD — so it appears on all four edges.
     if (this.sleepDark > 0.01) {
       const inspecting = r.inspecting;
