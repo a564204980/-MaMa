@@ -1,0 +1,7 @@
+# Wishes props v1
+
+Built-in image_gen, 2172x724 RGB green-background source atlas. Left-to-right: strawberry cake, retro television, brown teddy bear, cream rabbit, green dinosaur. Five separate full objects, no text. Nominal equal cells width434.4 pixels. Safe vertical separators x=[0,434,869,1303,1738,2172], y=[0,724]. Tight object bounds should be detected inside cells. Green dinosaur is shaded muted yellow-green and dark teal, distinct from vivid chroma backdrop; avoid overly broad green-removal thresholds.
+
+Prompt:
+
+Compact 2D mobile cartoon game prop sprite atlas. Exactly FIVE isolated objects in ONE horizontal row, each centered inside equal width invisible cells with generous padding and no overlap. Left to right: 1 small strawberry cake slice with cream frosting and single red strawberry; 2 small retro television with rounded teal/brown case dark screen and two short antennae; 3 cute brown teddy bear plush sitting; 4 cream white rabbit plush sitting with long ears; 5 cute small green dinosaur plush sitting. Slight overhead cartoon game view, thick very dark navy clean outlines, simple flat muted color fills minimal cel shading, rounded chunky silhouettes readable at 40 pixels. All objects complete and same approximate visual size, each recognizable from outline. Solid uniform vivid green background #00FF00 for chroma extraction, absolutely no shadows no gradients no floor no scenery no people no text no labels no gridlines no watermark. Canvas wide landscape 5:1 if possible; five equally spaced cells with blank safe margins.

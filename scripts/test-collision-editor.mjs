@@ -1,0 +1,44 @@
+import fs from 'node:fs';
+import assert from 'node:assert/strict';
+import ts from 'typescript';
+const source=fs.readFileSync('src/gameplay/House.ts','utf8');
+function house(shapes=null,doors){const exports={};const code=source.replace("import collisionData from './collision-overrides.json';",`const collisionData=${JSON.stringify({version:1,shapes,doors})};`);new Function('exports',ts.transpileModule(code,{compilerOptions:{target:ts.ScriptTarget.ES2020,module:ts.ModuleKind.CommonJS}}).outputText)(exports);return exports;}
+const original=house(null,[]);
+for(let y=0;y<996;y+=11)for(let x=0;x<1580;x+=11){const p={x,y},r=10;const expected=[-r,r].every(dx=>[-r,r].every(dy=>original.inside({x:x+dx,y:y+dy},{x:0,y:0,w:1580,h:996})))&&![...original.walls,...original.furniture].some(rect=>original.inside(p,{x:rect.x-r,y:rect.y-r,w:rect.w+r*2,h:rect.h+r*2}));assert.equal(original.walkable(p),expected,`Blocker geometry changed at ${x},${y}`);}
+const empty=house([]);
+assert.equal(empty.walkable({x:350,y:485}),true,'Old bedroom/nursery gap must be walkable without a painted blocker');
+assert.equal(empty.walkable({x:5,y:485}),false,'Map outer edge must still block');
+assert.equal(empty.walkable({x:440,y:230},new Set(['parents'])),false,'Closed doors must still block');
+const shape=points=>[{id:'test',kind:'wall',points:points.map(([x,y])=>({x,y}))}];
+const triangle=house(shape([[700,400],[800,400],[700,500]]));
+assert.equal(triangle.walkable({x:720,y:420}),false,'Triangle interior must block');
+assert.equal(triangle.walkable({x:752,y:452}),false,'Actor footprint crossing a sloped edge must block');
+assert.equal(triangle.walkable({x:790,y:490}),true,'Outside triangle, inside its bounding box, must remain walkable');
+const concave=house(shape([[700,400],[800,400],[800,430],[730,430],[730,500],[700,500]]));
+assert.equal(concave.walkable({x:770,y:470}),true,'Concave cutout must remain open');
+assert.equal(concave.walkable({x:715,y:470}),false,'Concave solid arm must block');
+const thin=house(shape([[700,400],[701,400],[701,500],[700,500]]));
+assert.equal(thin.walkable({x:705,y:450}),false,'Thin wall within footprint must block');
+const overlap=shape([[700,300],[720,300],[720,500],[700,500]]);
+overlap.push({...overlap[0],id:'furniture',kind:'furniture'});
+const doors=[{id:'test-door',x:710,y:400,w:40,h:50}];
+const cutout=house(overlap,doors);
+assert.equal(cutout.walkable({x:710,y:400}),true,'Open door overrides all painted blockers');
+assert.equal(cutout.walkable({x:710,y:400},new Set(['test-door'])),false,'Closed door still blocks');
+assert.equal(cutout.walkable({x:710,y:419}),false,'Footprint protruding beyond door must hit remaining wall');
+assert.equal(cutout.walkable({x:710,y:460}),false,'Wall beyond door stays solid');
+const player={x:680,y:380};cutout.move(player,60,0);assert.equal(player.x,740,'Movement crosses cutout with foot offset');
+const blockedPlayer={x:680,y:380};cutout.move(blockedPlayer,60,0,new Set(['test-door']));assert.ok(blockedPlayer.x<700);
+const route=cutout.route({x:680,y:380},{x:740,y:380});assert.ok(route.length>0&&route.every(p=>p.y===380),'Navigation uses open doorway');
+const adjacent=house(overlap,[{id:'a',x:700,y:400,w:20,h:50},{id:'b',x:720,y:400,w:20,h:50}]);
+assert.equal(adjacent.walkable({x:710,y:400}),true,'Adjacent door union has no phantom seam');
+const editor=fs.readFileSync('scripts/editor.js','utf8');
+const editorReason=new Function('shapes','doors','closed',`const W=1580,H=996;const $=()=>({checked:closed});${editor.slice(editor.indexOf('function inside('),editor.indexOf('function draw('))};return reason;`);
+for(const closed of [false,true]){const reason=editorReason(overlap,doors,closed);for(let x=680;x<=740;x+=3)for(let y=365;y<=435;y+=3)assert.equal(!reason({x,y}),cutout.walkable({x,y},new Set(closed?['test-door']:[])),`Editor/runtime mismatch ${x},${y}`);}
+const server=fs.readFileSync('scripts/editor-server.mjs','utf8');
+const validate=new Function(server.slice(server.indexOf('export function validate'),server.indexOf('function geometry')).replace('export function','function')+';return validate;')();
+assert.doesNotThrow(()=>validate({version:1,shapes:shape([[700,400],[800,400],[700,500]])}));
+assert.doesNotThrow(()=>validate({version:1,shapes:shape([[0,0],[100,100],[100,0],[0,100]])}));
+assert.throws(()=>validate({version:1,shapes:shape([[-1,0],[100,0],[0,100]])}));
+assert.throws(()=>validate({version:1,shapes:shape([[0,0],[0,0],[0,0]])}));
+console.log('PASS: painted blockers and map boundary; old room gaps open; convex, concave and thin polygon collision; invalid editor data rejected.');

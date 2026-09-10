@@ -1,0 +1,37 @@
+{
+  "name": "four-asleep-minigame",
+  "version": "1.0.0",
+  "description": "微信小游戏现代化轻量开发框架",
+  "main": "dist/game.js",
+  "type": "module",
+  "scripts": {
+    "editor": "node scripts/editor-server.mjs",
+    "build": "rollup -c rollup.config.mjs",
+    "dev": "rollup -c rollup.config.mjs -w",
+    "type-check": "tsc --noEmit",
+    "preview": "node scripts/preview.mjs",
+    "test": "node scripts/test.mjs",
+    "test:wechat-input": "npm run build && node scripts/test-wechat-input.mjs",
+    "test:controls": "npm run build && node scripts/test-controls.mjs"
+  },
+  "keywords": [
+    "wechat",
+    "minigame",
+    "typescript",
+    "game-framework"
+  ],
+  "author": "",
+  "license": "MIT",
+  "devDependencies": {
+    "@rollup/plugin-commonjs": "^28.0.2",
+    "@rollup/plugin-node-resolve": "^16.0.0",
+    "@rollup/plugin-typescript": "^12.1.2",
+    "miniprogram-api-typings": "^3.12.3",
+    "rollup": "^4.34.8",
+    "rollup-plugin-copy": "^3.5.0",
+    "tslib": "^2.8.1",
+    "typescript": "^5.7.3"
+  }
+}
+
+
